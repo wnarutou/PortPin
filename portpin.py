@@ -1,14 +1,33 @@
+import argparse
+import json
 import socket
 import threading
 
-LISTEN_IP = "127.0.0.1"
-LISTEN_PORT = 13389
 
-SOURCE_IP = "192.168.31.31"
-SOURCE_PORT = 40000
+DEFAULT_CONFIG_PATH = "config.json"
 
-REMOTE_IP = "192.168.31.58"
-REMOTE_PORT = 3389
+
+def load_config(path):
+    with open(path, "r", encoding="utf-8") as config_file:
+        config = json.load(config_file)
+
+    required = {
+        "listen_ip",
+        "listen_port",
+        "source_ip",
+        "source_port",
+        "remote_ip",
+        "remote_port",
+    }
+    missing = required - config.keys()
+    if missing:
+        raise ValueError(f"Missing configuration keys: {', '.join(sorted(missing))}")
+
+    for key in ("listen_port", "source_port", "remote_port"):
+        if not isinstance(config[key], int) or not 1 <= config[key] <= 65535:
+            raise ValueError(f"{key} must be an integer between 1 and 65535")
+
+    return config
 
 
 def forward(src, dst):
@@ -27,23 +46,22 @@ def forward(src, dst):
             pass
 
 
-def handle(client):
+def handle(client, config):
     remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # 尽量允许端口快速重复使用
     remote.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     try:
-        # 关键：固定 55 的出站源端口
-        remote.bind((SOURCE_IP, SOURCE_PORT))
+        remote.bind((config["source_ip"], config["source_port"]))
 
         print(
             f"Connecting "
-            f"{SOURCE_IP}:{SOURCE_PORT} -> "
-            f"{REMOTE_IP}:{REMOTE_PORT}"
+            f"{config['source_ip']}:{config['source_port']} -> "
+            f"{config['remote_ip']}:{config['remote_port']}"
         )
 
-        remote.connect((REMOTE_IP, REMOTE_PORT))
+        remote.connect((config["remote_ip"], config["remote_port"]))
 
         print("RDP tunnel connected")
 
@@ -70,7 +88,7 @@ def handle(client):
     finally:
         try:
             client.close()
-        except:
+        except OSError:
             pass
 
         try:
@@ -81,24 +99,40 @@ def handle(client):
         print("RDP tunnel closed")
 
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+def main():
+    parser = argparse.ArgumentParser(description="Forward TCP connections with a fixed source port")
+    parser.add_argument(
+        "-c",
+        "--config",
+        default=DEFAULT_CONFIG_PATH,
+        help=f"path to JSON configuration (default: {DEFAULT_CONFIG_PATH})",
+    )
+    args = parser.parse_args()
+    config = load_config(args.config)
 
-# 只监听 localhost，不向主网开放 13389
-server.bind((LISTEN_IP, LISTEN_PORT))
-server.listen(5)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-print(f"Listening on {LISTEN_IP}:{LISTEN_PORT}")
-print(
-    f"Outbound fixed source: "
-    f"{SOURCE_IP}:{SOURCE_PORT}"
-)
+    try:
+        server.bind((config["listen_ip"], config["listen_port"]))
+        server.listen(5)
 
-while True:
-    client, addr = server.accept()
+        print(f"Listening on {config['listen_ip']}:{config['listen_port']}")
+        print(
+            f"Outbound fixed source: "
+            f"{config['source_ip']}:{config['source_port']}"
+        )
 
-    threading.Thread(
-        target=handle,
-        args=(client,),
-        daemon=True
-    ).start()
+        while True:
+            client, _ = server.accept()
+            threading.Thread(
+                target=handle,
+                args=(client, config),
+                daemon=True,
+            ).start()
+    finally:
+        server.close()
+
+
+if __name__ == "__main__":
+    main()

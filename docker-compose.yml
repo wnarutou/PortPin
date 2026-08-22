@@ -1,0 +1,8 @@
+services:
+  portpin:
+    build: .
+    container_name: portpin
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./config.json:/app/config.json:ro
