@@ -57,4 +57,4 @@ git push origin v1.0.0
 - `DOCKERHUB_USERNAME`：Docker Hub 用户名
 - `DOCKERHUB_TOKEN`：Docker Hub Access Token
 
-镜像会发布为 `DOCKERHUB_USERNAME/portpin`，并生成版本号、`latest` 和提交 SHA tag。
+镜像会发布为 `DOCKERHUB_USERNAME/portpin`，并生成完整版本号和 `latest` tag。
