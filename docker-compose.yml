@@ -2,7 +2,13 @@ services:
   portpin:
     build: .
     container_name: portpin
+    image: wnarutou/portpin:latest
     network_mode: host
     restart: unless-stopped
-    volumes:
-      - ./config.json:/app/config.json:ro
+    environment:
+      LISTEN_IP: "192.168.31.31"
+      LISTEN_PORT: "13389"
+      SOURCE_IP: "192.168.31.31"
+      SOURCE_PORT: "40000"
+      REMOTE_IP: "192.168.31.58"
+      REMOTE_PORT: "3389"

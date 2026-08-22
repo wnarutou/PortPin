@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import socket
 import threading
 
@@ -10,6 +11,24 @@ DEFAULT_CONFIG_PATH = "config.json"
 def load_config(path):
     with open(path, "r", encoding="utf-8") as config_file:
         config = json.load(config_file)
+
+    environment_keys = {
+        "listen_ip": "LISTEN_IP",
+        "listen_port": "LISTEN_PORT",
+        "source_ip": "SOURCE_IP",
+        "source_port": "SOURCE_PORT",
+        "remote_ip": "REMOTE_IP",
+        "remote_port": "REMOTE_PORT",
+    }
+    for config_key, environment_key in environment_keys.items():
+        if environment_key in os.environ:
+            value = os.environ[environment_key]
+            if config_key.endswith("_port"):
+                try:
+                    value = int(value)
+                except ValueError:
+                    pass
+            config[config_key] = value
 
     required = {
         "listen_ip",

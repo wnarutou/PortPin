@@ -27,7 +27,7 @@ python3 portpin.py --config config.json
 
 ## Docker 部署
 
-修改 `config.json` 后执行：
+在 `docker-compose.yml` 的 `environment` 中修改配置后执行：
 
 ```bash
 docker compose up -d --build
@@ -40,6 +40,8 @@ docker compose logs -f portpin
 ```
 
 Compose 使用 host 网络模式，这是为了让容器能够绑定宿主机的 `source_ip`。因此 `listen_ip` 和端口也直接作用于宿主机，配置为 `0.0.0.0` 时请同时配置防火墙规则。
+
+Docker 部署时，Compose 环境变量会覆盖镜像内 `config.json` 中的同名配置。环境变量名为 `LISTEN_IP`、`LISTEN_PORT`、`SOURCE_IP`、`SOURCE_PORT`、`REMOTE_IP` 和 `REMOTE_PORT`。
 
 ## 发布到 Docker Hub
 
