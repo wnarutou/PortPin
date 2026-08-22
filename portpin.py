@@ -1,8 +1,8 @@
 import argparse
 import json
 import os
+import select
 import socket
-import threading
 
 
 DEFAULT_CONFIG_PATH = "config.json"
@@ -49,73 +49,78 @@ def load_config(path):
     return config
 
 
-def forward(src, dst):
-    try:
-        while True:
-            data = src.recv(65536)
-            if not data:
-                break
-            dst.sendall(data)
-    except OSError:
-        pass
-    finally:
-        try:
-            dst.shutdown(socket.SHUT_WR)
-        except OSError:
-            pass
-
-
 def handle(client, config):
     remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # 尽量允许端口快速重复使用
-    remote.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     try:
-        remote.bind((config["source_ip"], config["source_port"]))
-
         print(
-            f"Connecting "
+            f"[+] Connecting "
             f"{config['source_ip']}:{config['source_port']} -> "
             f"{config['remote_ip']}:{config['remote_port']}"
         )
 
+        remote.bind((config["source_ip"], config["source_port"]))
         remote.connect((config["remote_ip"], config["remote_port"]))
 
-        print("RDP tunnel connected")
+        print("[+] Remote connected")
 
-        t1 = threading.Thread(
-            target=forward,
-            args=(client, remote),
-            daemon=True
-        )
-        t2 = threading.Thread(
-            target=forward,
-            args=(remote, client),
-            daemon=True
-        )
+        sockets = [client, remote]
 
-        t1.start()
-        t2.start()
+        while True:
+            readable, _, exceptional = select.select(
+                sockets,
+                [],
+                sockets,
+            )
 
-        t1.join()
-        t2.join()
+            if exceptional:
+                print("[-] Socket exception")
+                break
 
-    except Exception as e:
-        print("Connection error:", e)
+            for source in readable:
+                try:
+                    data = source.recv(65536)
+                except OSError as error:
+                    print(f"[-] recv error: {error}")
+                    return
+
+                if not data:
+                    print("[-] Peer closed connection")
+                    return
+
+                if source is client:
+                    destination = remote
+                    direction = "CLIENT -> REMOTE"
+                else:
+                    destination = client
+                    direction = "REMOTE -> CLIENT"
+
+                try:
+                    destination.sendall(data)
+                except OSError as error:
+                    print(f"[-] send error: {error}")
+                    return
+
+                print(f"[>] {direction}: {len(data)} bytes")
+
+    except Exception as error:
+        print(f"[-] Connection error: {error!r}")
 
     finally:
         try:
-            client.close()
-        except OSError:
+            remote.close()
+        except Exception:
             pass
 
         try:
-            remote.close()
-        except:
+            client.close()
+        except Exception:
             pass
 
-        print("RDP tunnel closed")
+        print("[-] Connection closed")
 
 
 def main():
@@ -143,12 +148,9 @@ def main():
         )
 
         while True:
-            client, _ = server.accept()
-            threading.Thread(
-                target=handle,
-                args=(client, config),
-                daemon=True,
-            ).start()
+            client, address = server.accept()
+            print(f"[+] Client connected: {address}")
+            handle(client, config)
     finally:
         server.close()
 
