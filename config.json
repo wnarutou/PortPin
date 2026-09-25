@@ -4,5 +4,6 @@
   "source_ip": "192.168.31.31",
   "source_port": 40000,
   "remote_ip": "192.168.31.58",
-  "remote_port": 3389
+  "remote_port": 3389,
+  "reset_on_disconnect": true
 }

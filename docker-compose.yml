@@ -12,3 +12,4 @@ services:
       SOURCE_PORT: "40000"
       REMOTE_IP: "192.168.31.58"
       REMOTE_PORT: "3389"
+      RESET_ON_DISCONNECT: "true"
