@@ -3,6 +3,7 @@ import json
 import os
 import select
 import socket
+import struct
 
 
 DEFAULT_CONFIG_PATH = "config.json"
@@ -19,11 +20,16 @@ def load_config(path):
         "source_port": "SOURCE_PORT",
         "remote_ip": "REMOTE_IP",
         "remote_port": "REMOTE_PORT",
+        "reset_on_disconnect": "RESET_ON_DISCONNECT",
     }
     for config_key, environment_key in environment_keys.items():
         if environment_key in os.environ:
             value = os.environ[environment_key]
-            if config_key.endswith("_port"):
+            if config_key == "reset_on_disconnect":
+                if value.lower() not in ("true", "false"):
+                    raise ValueError("RESET_ON_DISCONNECT must be true or false")
+                value = value.lower() == "true"
+            elif config_key.endswith("_port"):
                 try:
                     value = int(value)
                 except ValueError:
@@ -46,16 +52,30 @@ def load_config(path):
         if not isinstance(config[key], int) or not 1 <= config[key] <= 65535:
             raise ValueError(f"{key} must be an integer between 1 and 65535")
 
+    config.setdefault("reset_on_disconnect", True)
+    if not isinstance(config["reset_on_disconnect"], bool):
+        raise ValueError("reset_on_disconnect must be a boolean")
+
     return config
 
 
 def handle(client, config):
     remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
     try:
+        client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        remote.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if config.get("reset_on_disconnect", True):
+            # Reconnecting to the same peer needs the same TCP four-tuple.
+            # SO_REUSEADDR alone cannot bypass TIME_WAIT for that connection.
+            # Winsock uses unsigned shorts for linger; Unix uses ints.
+            linger_format = "HH" if os.name == "nt" else "ii"
+            remote.setsockopt(
+                socket.SOL_SOCKET, socket.SO_LINGER,
+                struct.pack(linger_format, 1, 0),
+            )
+
         print(
             f"[+] Connecting "
             f"{config['source_ip']}:{config['source_port']} -> "
